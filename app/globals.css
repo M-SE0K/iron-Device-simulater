@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-brand-blue: #0057B8;
+    --color-surface: #FFFFFF;
+    --color-iron-900: #1A1D23;
+  }
+
+  body {
+    @apply bg-iron-50 text-iron-900 font-sans antialiased;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-iron-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-iron-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-iron-400;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-iron-100 rounded-xl shadow-sm;
+  }
+
+  .card-header {
+    @apply px-5 py-4 border-b border-iron-100 flex items-center justify-between;
+  }
+
+  .card-title {
+    @apply text-sm font-semibold text-iron-700 uppercase tracking-widest;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .badge-blue {
+    @apply badge bg-brand-blue/10 text-brand-blue;
+  }
+
+  .badge-green {
+    @apply badge bg-emerald-50 text-emerald-600;
+  }
+
+  .badge-red {
+    @apply badge bg-red-50 text-red-600;
+  }
+}
