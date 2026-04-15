@@ -1,15 +1,19 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useCallback, useRef, useEffect } from "react";
 import Header from "@/components/Header";
 import AudioUploader from "@/components/AudioUploader";
 import WaveformPlayer, { WaveformPlayerHandle } from "@/components/WaveformPlayer";
+import MicrophonePlayer from "@/components/MicrophonePlayer";
 import TemperatureChart from "@/components/TemperatureChart";
 import ExcursionChart from "@/components/ExcursionChart";
 import StatusPanel from "@/components/StatusPanel";
 import { AppStatus, AnalysisFrame, StreamDebugInfo, DebugLogEntry, MeasurementExport } from "@/lib/types";
 import DebugPanel from "@/components/DebugPanel";
 import InputParameters, { InputParameterValues } from "@/components/InputParameters";
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
   const [status, setStatus]                   = useState<AppStatus>("idle");
@@ -31,6 +35,7 @@ export default function DashboardPage() {
     ampOutputPower: "",
     speakerModel: "",
   });
+  const [inputMode, setInputMode] = useState<"file" | "mic">("file");
 
   // 프레임마다 setState 방지 — ref에 누적 후 100ms마다 flush
   const pendingLogsRef = useRef<DebugLogEntry[]>([]);
@@ -176,6 +181,20 @@ export default function DashboardPage() {
     setMeasureFrameCount(0);
   }, []);
 
+  const handleInputModeChange = useCallback((mode: "file" | "mic") => {
+    setInputMode(mode);
+    setStreamingFrames([]);
+    setDebugLogs([]);
+    pendingLogsRef.current = [];
+    setCurrentTime(0);
+    setStatus("idle");
+    setErrorMsg(null);
+    isMeasuringRef.current = false;
+    setIsMeasuring(false);
+    measureLogsRef.current = [];
+    setMeasureFrameCount(0);
+  }, []);
+
   const handleStreamStart = useCallback(() => {
     setStreamingFrames([]);
   }, []);
@@ -301,14 +320,44 @@ export default function DashboardPage() {
           {/* Top row */}
           <div id="dashboard-top-row" className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div id="upload-section" className="md:col-span-2 space-y-3">
+              {/* 입력 모드 탭 */}
+              <div className="flex gap-1 text-xs font-mono">
+                {(["file", "mic"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => handleInputModeChange(m)}
+                    className={cn(
+                      "px-2.5 py-1 rounded border transition-all",
+                      inputMode === m
+                        ? "bg-brand-blue text-white border-brand-blue"
+                        : "text-iron-400 border-iron-200 hover:border-iron-400"
+                    )}
+                  >
+                    {m === "file" ? "파일" : "마이크"}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <AudioUploader
-                    status={status}
-                    selectedFile={audioFile}
-                    onFileSelected={handleFileSelected}
-                    onReset={handleReset}
-                  />
+                  {inputMode === "file" ? (
+                    <AudioUploader
+                      status={status}
+                      selectedFile={audioFile}
+                      onFileSelected={handleFileSelected}
+                      onReset={handleReset}
+                    />
+                  ) : (
+                    <MicrophonePlayer
+                      status={status}
+                      onStatusChange={handleStatusChange}
+                      onFrameReceived={handleFrameReceived}
+                      onStreamStart={handleStreamStart}
+                      onDebugUpdate={handleDebugUpdate}
+                      onDebugLog={handleDebugLog}
+                      inputParams={inputParams}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5 mt-1">
                   <button
@@ -346,19 +395,21 @@ export default function DashboardPage() {
           {/* Input Parameters */}
           <InputParameters values={inputParams} onChange={setInputParams} />
 
-          {/* Waveform player */}
-          <WaveformPlayer
-            ref={waveformRef}
-            audioFile={audioFile}
-            status={status}
-            onTimeUpdate={setCurrentTime}
-            onStatusChange={handleStatusChange}
-            onFrameReceived={handleFrameReceived}
-            onStreamStart={handleStreamStart}
-            onDebugUpdate={handleDebugUpdate}
-            onDebugLog={handleDebugLog}
-            inputParams={inputParams}
-          />
+          {/* Waveform player — 파일 모드에서만 */}
+          {inputMode === "file" && (
+            <WaveformPlayer
+              ref={waveformRef}
+              audioFile={audioFile}
+              status={status}
+              onTimeUpdate={setCurrentTime}
+              onStatusChange={handleStatusChange}
+              onFrameReceived={handleFrameReceived}
+              onStreamStart={handleStreamStart}
+              onDebugUpdate={handleDebugUpdate}
+              onDebugLog={handleDebugLog}
+              inputParams={inputParams}
+            />
+          )}
 
           {/* 디버그 패널 */}
           {showDebug && (

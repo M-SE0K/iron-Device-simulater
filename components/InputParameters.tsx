@@ -14,10 +14,10 @@ interface Props {
 
 const SPEAKER_MODELS = [
   { value: "", label: "Select model..." },
-  { value: "ISD-W4A", label: "ISD-W4A" },
-  { value: "ISD-W6B", label: "ISD-W6B" },
-  { value: "ISD-T5C", label: "ISD-T5C" },
-  { value: "ISD-T8D", label: "ISD-T8D" },
+  { value: "Z3 SPK", label: "Z3 SPK" },
+  { value: "PA3 SPK", label: "PA3 SPK" },
+  { value: "B7 SPK", label: "B7 SPK" },
+  { value: "R8 SPK", label: "R8 SPK" },
 ];
 
 export default function InputParameters({ values, onChange }: Props) {
