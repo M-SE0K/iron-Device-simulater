@@ -366,7 +366,25 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, Props>(function Waveform
         lastServerProcMsRef.current = msg.processingMs as number;
         framesReceivedRef.current++;
 
+        const temperature = msg.temperature as [number, number];
+        const excursion   = msg.excursion   as [number, number];
+
+        // ── 수신 데이터 진단 로그 (첫 3프레임 + 100프레임마다) ────────────────
+        if (framesReceivedRef.current < 3 || framesReceivedRef.current % 100 === 0) {
+          const isArray = Array.isArray(msg.temperature);
+          console.debug(
+            `[WaveformPlayer] frame#${frameIdx}` +
+            `  isArray=${isArray}` +
+            `  T=[${temperature[0]}, ${temperature[1]}]` +
+            `  Exc=[${excursion[0]}, ${excursion[1]}]`
+          );
+          if (!isArray) {
+            console.warn("[WaveformPlayer] temperature/excursion이 배열이 아닙니다. 서버 버전을 확인하세요.");
+          }
+        }
+
         // 로그 엔트리 생성 (render 타임은 page.tsx의 handleDebugLog에서 첨부)
+        // DebugLogEntry는 단일값 — ch0(L)을 대표값으로 사용
         onDebugLog?.({
           receivedAt:        recvAt,
           audioTime:         msg.time        as number,
@@ -375,17 +393,17 @@ const WaveformPlayer = forwardRef<WaveformPlayerHandle, Props>(function Waveform
             ? parseFloat((recvAt - sentAt).toFixed(2))
             : null,
           serverProcMs:      msg.processingMs as number,
-          temperature:       msg.temperature  as number,
-          excursion:         msg.excursion    as number,
+          temperature:       temperature[0],
+          excursion:         excursion[0],
           reactRenderMs:     null,
           echartsRenderMs:   null,
           totalRecvRenderMs: null,
         });
 
         onFrameReceived({
-          time:        msg.time        as number,
-          temperature: msg.temperature as number,
-          excursion:   msg.excursion   as number,
+          time: msg.time as number,
+          temperature,
+          excursion,
         });
 
         flushDebug(true);

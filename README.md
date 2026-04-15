@@ -1,91 +1,157 @@
-# Iron Device — Audio Analysis Demo
+# Iron Device Simulator
 
-A web-based dashboard that visualizes **chipset temperature** and **speaker excursion displacement** in real-time upon uploading an audio file.  
-The system currently operates using a **Mock Engine** until the actual analysis library (`.so`) is integrated. Once the library is ready, you can switch engines simply by toggling environment variables.
+A web-based dashboard for demonstrating Iron Device Corporation's speaker protection algorithm library (`libirontune.so`), developed as part of a Jeonbuk National University SW industry-academic collaboration project.
 
----
-
-## 🚀 Key Features
-
-* **Audio File Drag-and-Drop**: Support for WAV, MP3, FLAC, and AAC formats.
-* **Waveform Rendering**: Playback controls and visualization powered by `WaveSurfer.js`.
-* **Real-time Temperature Chart**: Includes threshold indicators (**WARN 65°C** / **DANGER 75°C**).
-* **Speaker Excursion Chart**: Real-time visualization of displacement.
-* **Interactive Charts**: Supports mouse wheel and trackpad pinch-to-zoom for data inspection.
-* **System Status Panel**: Displays sample rate, frame count, and resolution.
+Visualizes **speaker temperature** and **excursion displacement** in real-time via audio file upload or live microphone input.
 
 ---
 
-## 🛠 Tech Stack
+## Modes
 
-| Category | Technology |
-| :--- | :--- |
-| **Framework** | Next.js 15 (App Router) |
-| **Language** | TypeScript |
-| **UI** | React 19 · Tailwind CSS |
-| **Charts** | Apache ECharts (`echarts-for-react`) |
-| **Audio** | WaveSurfer.js |
-| **FFI (Upcoming)** | koffi |
-| **Container** | Docker (`node:20-slim`) |
+| Mode | Engine | Platform |
+|---|---|---|
+| **Mock** | Formula-based simulation | macOS / Linux / Windows |
+| **Native** | Direct `libirontune.so` call | Linux x86-64 (Docker required) |
+
+> `libirontune.so` is an ELF 64-bit x86-64 binary (Ubuntu / GCC 5.4.0) and cannot be loaded directly on macOS or Windows.
 
 ---
 
-## 💻 Getting Started
+## Requirements
 
-### Local Development
+### Common
+- Node.js 20+
+- npm 9+
+
+### Native Mode Only
+- Docker (colima / Docker Desktop)
+- `libirontune.so` binary
+
+---
+
+## Installation
 
 ```bash
-# 1. Install dependencies
+git clone https://github.com/JBNU-CILAB/Iron-Device-Simulator.git
+cd iron-Device-simulator
 npm install
+```
 
-# 2. Start the development server
+---
+
+## Running by OS
+
+### macOS — Mock Mode (Local Development)
+
+```bash
 npm run dev
 ```
 
 Open http://localhost:3000 in your browser.
 
-### Production Build
-```bash
-  npm run build
-  npm start
-```
+---
 
-### Docker
-```bash
-  # Build the image
-  docker build -t iron-device-sim .
+### macOS — Native Mode (Docker)
 
-  # Run the container
-  docker run -p 3000:3000 iron-device-sim
-```
+> On macOS, use `script/run-native-docker.sh`.
 
-### .so Integration Guide
-Follow these 3 steps to replace the Mock Engine with the actual libaudio_analysis.so binary.
-
-1. Update lib/native-engine.ts Implement the function signatures based on your .so header file.
-```TypeScript
-// Refer to the .so header and fill in the TODO sections
-this.lib = koffi.load(soPath);
-```
-
-2. Enable NativeEngine in lib/audio-engine.ts Uncomment the relevant lines within the getEngine() function.
-
-```typeScript
-  // Uncomment the following lines (3 lines)
-  const { NativeEngine } = require("./native-engine");
-  _engine = new NativeEngine(soPath);
-```
-
-3. Set Environment Variables and Restart
+Edit `SO_HOST` in the script to point to your local `.so` file, then run:
 
 ```bash
-  # Local Environment
-  USE_MOCK=false SO_PATH=/path/to/libaudio_analysis.so npm start
-
-  # Docker
-  docker run -p 3000:3000 \
-    -e USE_MOCK=false \
-    -e SO_PATH=/app/native/libaudio_analysis.so \
-    -v /host/path/libaudio_analysis.so:/app/native/libaudio_analysis.so \
-    iron-device-sim
+vi script/run-native-docker.sh   # set SO_HOST path
+./script/run-native-docker.sh
 ```
+
+On Apple Silicon (M1/M2/M3/M4), the container runs under QEMU x86-64 emulation. The initial build may take a while.
+
+**colima setup (if using colima):**
+
+```bash
+colima start --arch x86_64 --memory 4
+```
+
+---
+
+### Linux x86-64 — Mock Mode
+
+```bash
+npm run dev
+```
+
+---
+
+### Linux x86-64 — Native Mode
+
+> On Linux, use `script/run-native.sh`.
+
+**Run via script (recommended):**
+
+```bash
+vi script/run-native.sh   # set SO_HOST path
+./script/run-native.sh
+```
+
+**Run directly:**
+
+```bash
+USE_MOCK=false SO_PATH=/path/to/libirontune.so npx tsx server.ts
+```
+
+---
+
+### Windows — Mock Mode
+
+```powershell
+npm run dev
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `USE_MOCK` | `true` | Set to `false` to use the Native engine |
+| `SO_PATH` | `/app/native/libirontune.so` | Absolute path to the `.so` file |
+| `PORT` | `3000` | Shared HTTP / WebSocket port |
+| `LOG_FRAME_INTERVAL` | `10` | Print frame log every N frames |
+| `LOG_LEVEL` | — | Set to `silent` to suppress frame logs |
+
+---
+
+## Dev Commands
+
+```bash
+npm run dev      # Dev server (Mock mode, HMR enabled)
+npm run build    # Production build
+npm start        # Production server
+npm run lint     # ESLint
+```
+
+---
+
+## Features
+
+- **File Mode** — Upload WAV / MP3 and get real-time analysis synced to playback
+- **Microphone Mode** — Real-time analysis from browser microphone input
+- **Temperature / Excursion Charts** — L / R / Both channel toggle, ECharts-based live rendering
+- **Debug Panel** — RTT, server processing time, React/ECharts render pipeline metrics
+- **Measurement Mode** — Record a session and export as JSON
+
+---
+
+## Tech Stack
+
+| Category | Technology |
+|---|---|
+| Framework | Next.js 15 (App Router) |
+| UI | React 19 · Tailwind CSS |
+| Charts | Apache ECharts (echarts-for-react) |
+| Native FFI | koffi |
+| Container | Docker (node:20-slim, linux/amd64) |
+
+---
+
+## License
+
+Jeonbuk National University SW Industry-Academic Collaboration Project — Redistribution and public disclosure prohibited.

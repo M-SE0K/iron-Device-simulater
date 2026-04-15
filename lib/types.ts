@@ -10,10 +10,10 @@ export interface EngineParams {
 export interface AnalysisFrame {
   /** 오디오 재생 시간(초) */
   time: number;
-  /** 칩 온도 (°C) */
-  temperature: number;
-  /** 스피커 진폭 변위 (mm) */
-  excursion: number;
+  /** 스피커 온도 (°C) — [ch0(L), ch1(R)] */
+  temperature: [number, number];
+  /** 스피커 진폭 변위 — [ch0(L), ch1(R)] */
+  excursion: [number, number];
 }
 
 /** 업로드 → 분석 → 시각화 상태 */
@@ -55,7 +55,7 @@ export type WsClientMessage =
 /** 서버 → 클라이언트 */
 export type WsServerMessage =
   | { type: "ready" }
-  | { type: "frame"; time: number; temperature: number; excursion: number; processingMs: number }
+  | { type: "frame"; time: number; temperature: [number, number]; excursion: [number, number]; processingMs: number }
   | { type: "error"; message: string };
 
 // ─── 스트리밍 디버그 정보 ────────────────────────────────────────────────────

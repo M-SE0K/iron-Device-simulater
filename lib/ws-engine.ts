@@ -46,17 +46,13 @@ interface SpeakerProfile {
 }
 
 const SPEAKER_PROFILES: Record<string, SpeakerProfile> = {
-  // ISD-W4A: 4" 우퍼 기준 모델 (all ×1.0)
-  "ISD-W4A": { tempMult: 1.00, excMult: 1.00, tempBase: 55, excAmp: 5.0 },
-  // ISD-W6B: 6" 우퍼 — 진동판 면적 ↑ → 열 분산 ↑(온도↓), 변위 폭 ↑
-  "ISD-W6B": { tempMult: 0.82, excMult: 1.30, tempBase: 50, excAmp: 6.5 },
-  // ISD-T5C: 5" 미드/트위터 — 소형 → 열 집중(온도↑), 변위 제한(익스커션↓)
-  "ISD-T5C": { tempMult: 1.22, excMult: 0.65, tempBase: 63, excAmp: 3.2 },
-  // ISD-T8D: 8" 서브우퍼 — 대형 → 열 분산 ↑↑(온도↓), 최대 변위 ↑↑
-  "ISD-T8D": { tempMult: 0.74, excMult: 1.52, tempBase: 47, excAmp: 7.8 },
+  "Z3 SPK": { tempMult: 1.00, excMult: 1.00, tempBase: 55, excAmp: 5.0 },
+  "PA3 SPK": { tempMult: 0.82, excMult: 1.30, tempBase: 50, excAmp: 6.5 },
+  "B7 SPK": { tempMult: 1.22, excMult: 0.65, tempBase: 63, excAmp: 3.2 },
+  "R8 SPK": { tempMult: 0.74, excMult: 1.52, tempBase: 47, excAmp: 7.8 },
 };
 
-const DEFAULT_PROFILE: SpeakerProfile = SPEAKER_PROFILES["ISD-W4A"];
+const DEFAULT_PROFILE: SpeakerProfile = SPEAKER_PROFILES["Z3 SPK"];
 const REF_AMP_POWER = 20; // W — 기준 전력
 
 /** AMP 출력 전력 → 온도 승수 (열 평형: T ∝ P^0.6 근사) */
@@ -82,25 +78,37 @@ function deinterleave(src: Buffer): Buffer {
 }
 
 // ─── Mock 온도·익스커션 생성 (재생 시간 + 엔진 파라미터 기반) ───────────────
-function mockFrame(time: number, params: EngineParams): { temperature: number; excursion: number } {
+function mockFrame(time: number, params: EngineParams): { temperature: [number, number]; excursion: [number, number] } {
   const profile  = SPEAKER_PROFILES[params.speakerModel] ?? DEFAULT_PROFILE;
   const pwrScale = powerTempMult(params.ampOutputPower);
 
-  // 온도: 모델 기준 베이스 + 파워에 비례한 상승폭, 재생 시간에 따라 완만한 사인 곡선
-  const tempRise   = 15 * profile.tempMult * pwrScale;
-  const temperature = parseFloat(
+  // 온도 ch0 (L) — 기준 모델 곡선
+  const tempRise = 15 * profile.tempMult * pwrScale;
+  const temp0 = parseFloat(
     (profile.tempBase * pwrScale + tempRise * Math.sin((time / 30) * Math.PI)
       + (Math.random() - 0.5) * 3).toFixed(2)
   );
+  // 온도 ch1 (R) — 방열 환경 차이: 기준보다 약 8°C 높고 느리게 상승
+  const temp1 = parseFloat(
+    (profile.tempBase * pwrScale * 1.12 + tempRise * 0.85 * Math.sin((time / 38) * Math.PI)
+      + (Math.random() - 0.5) * 3).toFixed(2)
+  );
 
-  // 익스커션: 모델 기준 진폭, 오디오 파형 패턴 유지
-  const excursion = parseFloat(
+  // 익스커션 ch0 (L)
+  const exc0 = parseFloat(
     (profile.excAmp * profile.excMult
       * Math.sin((time * 2 * Math.PI) / 0.8)
       * (0.7 + 0.3 * Math.sin(time * 0.4))
       + (Math.random() - 0.5) * 0.5).toFixed(3)
   );
-  return { temperature, excursion };
+  // 익스커션 ch1 (R) — 진폭 ×0.7, 위상 π/2 (90°) 차이로 명확히 구분
+  const exc1 = parseFloat(
+    (profile.excAmp * profile.excMult * 0.7
+      * Math.sin((time * 2 * Math.PI) / 0.8 + Math.PI / 2)
+      * (0.7 + 0.3 * Math.sin(time * 0.4 + 0.5))
+      + (Math.random() - 0.5) * 0.5).toFixed(3)
+  );
+  return { temperature: [temp0, temp1], excursion: [exc0, exc1] };
 }
 
 // ─── WebSocket 연결 핸들러 ────────────────────────────────────────────────────
@@ -110,6 +118,8 @@ export function handleWsConnection(ws: WebSocket): void {
 
   // 연결별 엔진 파라미터 (init 메시지에서 수신)
   let engineParams: EngineParams = { ampOutputPower: null, speakerModel: "" };
+  // 실제 샘플레이트 (마이크 모드에서 44100 이외 값 가능)
+  let connSampleRate: number = SAMPLE_RATE;
 
   // Native 엔진 함수 참조 (USE_MOCK=false 시 사용)
   let fnInit:      (() => number)                   | null = null;
@@ -148,7 +158,7 @@ export function handleWsConnection(ws: WebSocket): void {
       if (pcm.length < FRAME_BYTES) return;
 
       const currentFrame = frameCount;
-      const time = parseFloat(((currentFrame * SAMPLES_PER_CH) / SAMPLE_RATE).toFixed(4));
+      const time = parseFloat(((currentFrame * SAMPLES_PER_CH) / connSampleRate).toFixed(4));
       frameCount++;
 
       const t0 = performance.now();
@@ -161,7 +171,12 @@ export function handleWsConnection(ws: WebSocket): void {
         send({ type: "frame", time, temperature, excursion, processingMs });
 
         if (shouldLogFrame(currentFrame)) {
-          logFrame(currentFrame, processingMs, temperature, excursion, "mock");
+          logFrame(currentFrame, processingMs, temperature[0], excursion[0], "mock");
+          console.debug(
+            `[ws-engine][mock] #${currentFrame}` +
+            `  T=[${temperature[0].toFixed(1)}, ${temperature[1].toFixed(1)}]°C` +
+            `  Exc=[${excursion[0].toFixed(2)}, ${excursion[1].toFixed(2)}]`
+          );
         }
 
       } else {
@@ -181,21 +196,42 @@ export function handleWsConnection(ws: WebSocket): void {
           return;
         }
 
-        // ff_prot_set_param은 NOP이므로 파라미터를 출력에 후처리 스케일로 적용
-        // so_report.md §10 참고: K, Mms_x_K 등 전역변수 직접 주입 없이 스케일 근사
+        // ff_prot_set_param은 NOP이므로 파라미터를 출력에 후처리 스케일로 적용 -> 추후 라이브러리 제공하면 수정 필요함.
+        // so_report.md §10 참고: K, Mms_x_K 등 전역변수 직접 주입 없이 스케일 근사 -> 추후 라이브러리 제공하면 수정 필요함.
         const profile    = SPEAKER_PROFILES[engineParams.speakerModel] ?? DEFAULT_PROFILE;
         const pwrScale   = powerTempMult(engineParams.ampOutputPower);
 
-        const rawTemp    = spkTempBuf.readInt32LE(0);
-        const rawExc     = spkExcBuf.readInt32LE(0);
-        const temperature = Math.round(rawTemp * profile.tempMult * pwrScale);
-        const excursion   = Math.round(rawExc  * profile.excMult);
+        const rawTemp0 = spkTempBuf.readInt32LE(0);
+        const rawTemp1 = spkTempBuf.readInt32LE(4);
+        const rawExc0  = spkExcBuf.readInt32LE(0);
+        const rawExc1  = spkExcBuf.readInt32LE(4);
+
+        // libirontune.so는 현재 ch0만 결과를 씀 (ch1 = 0 고정)
+        // → ch1이 0이고 ch0가 유효한 경우 ch0를 미러하여 사용
+        // (향후 .so가 ch1도 출력하면 rawTemp1/rawExc1 자동 사용)
+        const effectiveTemp1 = (rawTemp1 === 0 && rawTemp0 !== 0) ? rawTemp0 : rawTemp1;
+        const effectiveExc1  = (rawExc1  === 0 && rawExc0  !== 0) ? rawExc0  : rawExc1;
+
+        const temperature: [number, number] = [
+          Math.round(rawTemp0      * profile.tempMult * pwrScale), // ch0(L)
+          Math.round(effectiveTemp1 * profile.tempMult * pwrScale), // ch1(R) — 미러
+        ];
+        const excursion: [number, number] = [
+          Math.round(rawExc0      * profile.excMult), // ch0(L)
+          Math.round(effectiveExc1 * profile.excMult), // ch1(R) — 미러
+        ];
         const processingMs = parseFloat((performance.now() - t0).toFixed(3));
 
         send({ type: "frame", time, temperature, excursion, processingMs });
 
         if (shouldLogFrame(currentFrame)) {
-          logFrame(currentFrame, processingMs, temperature, excursion, "native");
+          logFrame(currentFrame, processingMs, temperature[0], excursion[0], "native");
+          console.debug(
+            `[ws-engine][native] #${currentFrame}` +
+            `  T=[${temperature[0]}, ${temperature[1]}]` +
+            `  Exc=[${excursion[0]}, ${excursion[1]}]` +
+            `  raw=[T0=${rawTemp0} T1=${rawTemp1} E0=${rawExc0} E1=${rawExc1}]`
+          );
         }
       }
       return;
@@ -223,6 +259,9 @@ export function handleWsConnection(ws: WebSocket): void {
         ampOutputPower: isFinite(rawPower) && rawPower > 0 ? rawPower : null,
         speakerModel:   typeof msg.speakerModel === "string" ? msg.speakerModel : "",
       };
+      // 샘플레이트 (마이크 모드: 실제 값 전달, 파일 모드: 생략 → 기본값 44100)
+      const rawRate = typeof msg.sampleRate === "number" ? msg.sampleRate : 0;
+      connSampleRate = rawRate > 0 ? rawRate : SAMPLE_RATE;
 
       const mode = USE_MOCK ? "mock" : "native";
       logInitReceived(mode);
