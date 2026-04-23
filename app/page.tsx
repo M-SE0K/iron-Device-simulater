@@ -58,9 +58,12 @@ export default function DashboardPage() {
   // ── 측정 모드 ─────────────────────────────────────────────────────────────
   const [isMeasuring, setIsMeasuring]         = useState(false);
   const [measureFrameCount, setMeasureFrameCount] = useState(0);
-  const isMeasuringRef      = useRef(false);
-  const measureLogsRef      = useRef<DebugLogEntry[]>([]);
-  const measureStartTimeRef = useRef<number>(0);
+  const isMeasuringRef           = useRef(false);
+  const measureLogsRef           = useRef<DebugLogEntry[]>([]);
+  const measureStartTimeRef      = useRef<number>(0);
+  const rawFramesRef             = useRef<{ time: number; temperature: [number, number]; excursion: [number, number] }[]>([]);
+  // 렌더 완료 시점 freshnessLag (handleEchartsRender에서 기록, per render tick)
+  const renderFreshnessLogsRef   = useRef<number[]>([]);
 
   // ── freshness lag 계산용 refs ─────────────────────────────────────────────
   const currentTimeRef       = useRef(0);
@@ -106,9 +109,11 @@ export default function DashboardPage() {
   const handleMeasureToggle = useCallback(() => {
     if (!isMeasuringRef.current) {
       // 측정 시작
-      measureLogsRef.current      = [];
-      measureStartTimeRef.current = performance.now();
-      maxStreamingLenRef.current  = 0;
+      measureLogsRef.current           = [];
+      rawFramesRef.current             = [];
+      renderFreshnessLogsRef.current   = [];
+      measureStartTimeRef.current      = performance.now();
+      maxStreamingLenRef.current       = 0;
       isMeasuringRef.current      = true;
       setIsMeasuring(true);
       setMeasureFrameCount(0);
@@ -155,6 +160,7 @@ export default function DashboardPage() {
       const freshnessVals = logs
         .map(l => l.freshnessLagMs)
         .filter((v): v is number => v !== null);
+      const renderFreshnessVals = renderFreshnessLogsRef.current;
 
       const data: MeasurementExport = {
         meta: {
@@ -168,7 +174,8 @@ export default function DashboardPage() {
           serverProc:     { avg: avg(srvVals) },
           recvRender:     fullStats(recvRenderVals),
           e2e:            fullStats(e2eVals),
-          freshnessLag:   fullStats(freshnessVals),
+          freshnessLag:         fullStats(freshnessVals),
+          renderFreshnessLag:   fullStats(renderFreshnessVals),
           temperature:    { avg: avg(tempVals) ?? 0, min: safeMin(tempVals) ?? 0, max: safeMax(tempVals) ?? 0 },
           excursion:      { avg: avg(excVals)  ?? 0, min: safeMin(excVals)  ?? 0, max: safeMax(excVals)  ?? 0 },
           maxStreamingFramesLen: maxStreamingLenRef.current,
@@ -182,7 +189,8 @@ export default function DashboardPage() {
           preservedEvents:      preservedEventsRef.current,
           eventLog:             eventLogRef.current,
         },
-        frames: logs,
+        frames:    logs,
+        rawFrames: rawFramesRef.current,
       };
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -278,6 +286,13 @@ export default function DashboardPage() {
       recvAt: performance.now(),
     });
     latestFrameTimeRef.current = frame.time;
+    if (isMeasuringRef.current) {
+      rawFramesRef.current.push({
+        time:        frame.time,
+        temperature: frame.temperature,
+        excursion:   frame.excursion,
+      });
+    }
   }, []);
 
   // ── Step 5: Coalescing 함수 — bucket을 하나의 요약 frame으로 병합 ──────
@@ -471,6 +486,10 @@ export default function DashboardPage() {
 
     const reactMs = parseFloat((reactRenderAtRef.current - frameRecvAtRef.current).toFixed(2));
     latestRenderMetrics.current = { reactMs, echartsMs, totalRecvMs, totalE2eMs };
+
+    if (isMeasuringRef.current && freshnessLagMs !== null) {
+      renderFreshnessLogsRef.current.push(freshnessLagMs);
+    }
 
     setDebugInfo((prev) => ({
       ...prev,
