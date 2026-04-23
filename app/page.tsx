@@ -357,7 +357,7 @@ export default function DashboardPage() {
     return events;
   }
 
-  // ── Step 3: Render Scheduler — 33ms마다 큐를 drain하여 state update ─────
+  // ── Step 3: Render Scheduler — 16ms마다 큐를 drain하여 state update ─────
   useEffect(() => {
     if (!isPlaying) return;
 

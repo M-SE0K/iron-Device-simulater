@@ -7,9 +7,9 @@ import { AppStatus, AnalysisFrame, StreamDebugInfo, DebugLogEntry } from "@/lib/
 import type { InputParameterValues } from "./InputParameters";
 
 // ─── PCM 처리 상수 ────────────────────────────────────────────────────────────
-const SAMPLE_RATE    = 44100;
-const SAMPLES_PER_CH = 256;
-const FRAME_BYTES    = SAMPLES_PER_CH * 2 * 2; // 256 samples × 2ch × 2 bytes = 1024
+const SAMPLE_RATE    = 48000;
+const SAMPLES_PER_CH = 480;
+const FRAME_BYTES    = SAMPLES_PER_CH * 2 * 2; // 480 samples × 2ch × 2 bytes = 1920
 
 interface Props {
   audioFile: File | null;
